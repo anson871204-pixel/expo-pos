@@ -1,0 +1,352 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>加盟展收銀</title>
+<style>
+/* 版面：手機單欄；上方今日營業，中間點餐，下方結帳；列印時只印收據 */
+:root {
+  --bg: #f4f6f5;
+  --panel: #ffffff;
+  --fg: #1d2421;
+  --muted: #66716c;
+  --line: #d9dfdc;
+  --accent: #0f6b4f;
+  --accent-fg: #ffffff;
+  --danger: #b3261e;
+  --font: Arial, "Helvetica Neue", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121614; --panel: #1b211e; --fg: #e8eeeb; --muted: #9aa6a0; --line: #2e3833;
+  --accent: #3fbf8f; --accent-fg: #08130e; --danger: #ff8a80; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #121614; --panel: #1b211e; --fg: #e8eeeb; --muted: #9aa6a0; --line: #2e3833;
+  --accent: #3fbf8f; --accent-fg: #08130e; --danger: #ff8a80; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: var(--bg); color: var(--fg); font: 16px/1.4 var(--font);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: max(12px, env(safe-area-inset-top, 0px)) max(24px, env(safe-area-inset-bottom, 0px));
+  font-variant-numeric: tabular-nums;
+}
+.wrap { max-width: 480px; margin: 0 auto; display: grid; gap: 14px; }
+header { display: flex; justify-content: space-between; align-items: end; gap: 8px; flex-wrap: wrap; }
+h1 { font-size: 20px; margin: 0; }
+.sub { color: var(--muted); font-size: 13px; }
+.today { text-align: right; }
+.today b { font-size: 20px; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; display: grid; gap: 12px; }
+h2 { font-size: 15px; margin: 0; color: var(--muted); letter-spacing: .02em; }
+.item { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 10px; }
+.item .name { font-size: 18px; font-weight: bold; }
+.item .price { color: var(--muted); font-size: 14px; }
+.qty { display: flex; align-items: center; gap: 8px; }
+.qty output { min-width: 2ch; text-align: center; font-size: 22px; font-weight: bold; }
+button { font: inherit; cursor: pointer; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); }
+button:focus-visible, input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.round { width: 52px; height: 52px; font-size: 26px; font-weight: bold; }
+.round.plus { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.total { display: flex; justify-content: space-between; align-items: baseline; border-top: 1px solid var(--line); padding-top: 10px; }
+.total b { font-size: 30px; }
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.seg button, .chips button { padding: 12px 8px; font-size: 16px; }
+.seg button[aria-pressed="true"], .chips button[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: bold; }
+.chips { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.change { display: flex; justify-content: space-between; font-size: 18px; }
+.change b { font-size: 22px; }
+.big { width: 100%; padding: 16px; font-size: 19px; font-weight: bold; background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.big:disabled { opacity: .4; cursor: not-allowed; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; }
+.row button { padding: 10px 12px; font-size: 14px; }
+.msg { font-size: 14px; color: var(--muted); min-height: 1.2em; }
+.list { display: grid; gap: 8px; }
+.tx { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; font-size: 14px; }
+.tx.void { opacity: .5; }
+.tx .no { font-weight: bold; }
+.tx .acts { grid-column: 1 / -1; display: flex; gap: 8px; flex-wrap: wrap; }
+.tx .acts button { padding: 6px 10px; font-size: 13px; }
+.danger { color: var(--danger); border-color: var(--danger); }
+table { width: 100%; border-collapse: collapse; font-size: 15px; }
+td, th { padding: 6px 4px; border-bottom: 1px solid var(--line); text-align: left; }
+td.n, th.n { text-align: right; }
+tr.sum td { font-weight: bold; background: color-mix(in srgb, var(--accent) 12%, transparent); }
+label { display: grid; gap: 4px; font-size: 14px; color: var(--muted); }
+input { font: inherit; padding: 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); width: 100%; }
+details summary { cursor: pointer; font-weight: bold; color: var(--muted); }
+details[open] { display: grid; gap: 10px; }
+
+/* 收據（螢幕上隱藏，列印時顯示） */
+#receipt { display: none; }
+@page { size: 58mm auto; margin: 2mm; }
+@media print {
+  body { background: #fff; color: #000; padding: 0; }
+  .wrap { display: none; }
+  #receipt { display: block; width: 100%; font: 9pt/1.35 var(--font); color: #000; }
+  #receipt .c { text-align: center; }
+  #receipt .co { font-size: 10.5pt; font-weight: bold; }
+  #receipt .ttl { font-size: 11pt; font-weight: bold; margin-top: 2mm; letter-spacing: .1em; }
+  #receipt hr { border: 0; border-top: 1px dashed #000; margin: 2mm 0; }
+  #receipt .l { display: flex; justify-content: space-between; gap: 2mm; }
+  #receipt .tot { font-size: 12pt; font-weight: bold; }
+  #receipt .void { font-size: 14pt; font-weight: bold; text-align: center; border: 2px solid #000; margin: 2mm 0; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>加盟展收銀</h1>
+      <div class="sub" id="coLine"></div>
+    </div>
+    <div class="today">
+      <div class="sub" id="todayLabel">今日</div>
+      <b id="todayTotal">RM0.00</b>
+      <div class="sub" id="todayCount">0 張收據</div>
+    </div>
+  </header>
+
+  <section aria-labelledby="h-order">
+    <h2 id="h-order">點餐</h2>
+    <div id="items"></div>
+    <div class="total"><span>應收</span><b id="due">RM0.00</b></div>
+  </section>
+
+  <section aria-labelledby="h-pay">
+    <h2 id="h-pay">付款</h2>
+    <div class="seg" role="group" aria-label="付款方式">
+      <button id="payCash" aria-pressed="true">現金</button>
+      <button id="payQR" aria-pressed="false">DuitNow QR</button>
+    </div>
+    <div id="cashBox" style="display:grid;gap:10px">
+      <div class="chips" id="chips"></div>
+      <div class="change"><span>收 <b id="paidShow">—</b></span><span>找零 <b id="changeShow">—</b></span></div>
+    </div>
+    <button class="big" id="checkout" disabled>結帳並列印收據</button>
+    <div class="row">
+      <button id="clear">清空</button>
+    </div>
+    <div class="msg" id="msg" role="status"></div>
+  </section>
+
+  <section aria-labelledby="h-recent">
+    <h2 id="h-recent">今日收據（最新在上）</h2>
+    <div class="list" id="recent"></div>
+  </section>
+
+  <section aria-labelledby="h-day">
+    <h2 id="h-day">日結</h2>
+    <div class="row">
+      <label style="flex:1">日期<input type="date" id="dayPick"></label>
+    </div>
+    <div style="overflow-x:auto"><table id="dayTable"></table></div>
+    <div class="row">
+      <button id="printDay">列印日結單</button>
+      <button id="exportCsv">匯出三天明細（CSV）</button>
+    </div>
+  </section>
+
+  <section>
+    <details>
+      <summary>收據設定</summary>
+      <label>公司名稱<input id="setCo"></label>
+      <label>第二行（地點／攤位，可空白）<input id="setLine2"></label>
+      <label>收銀員<input id="setCashier"></label>
+      <label>收據編號開頭<input id="setPrefix"></label>
+      <label>紙寬（mm，58 或 80）<input id="setPaper" inputmode="numeric"></label>
+      <div class="row"><button id="saveSet">儲存設定</button><button id="testPrint">列印測試收據</button></div>
+    </details>
+  </section>
+</div>
+
+<div id="receipt"></div>
+
+<script>
+const MENU = [
+  { id: 'LRF', zh: '滷肉飯', en: 'Braised Pork Rice', price: 8 },
+  { id: 'MS',  zh: '麵線',   en: 'Mee Sua',           price: 6 },
+];
+const DEFAULTS = { co: 'YU SHAN F&B CONSULTING SDN BHD', line2: '', cashier: 'ANSON WU', prefix: 'EXPO', paper: '58' };
+const KEY_TX = 'expo_pos_tx_v1', KEY_SET = 'expo_pos_set_v1';
+
+function load(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }
+function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
+
+let txs = load(KEY_TX, []);
+let set = Object.assign({}, DEFAULTS, load(KEY_SET, {}));
+let cart = {}; MENU.forEach(m => cart[m.id] = 0);
+let pay = 'Cash', paid = null;
+
+const $ = id => document.getElementById(id);
+const rm = n => 'RM' + n.toFixed(2);
+const pad = n => String(n).padStart(2, '0');
+const dayKey = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+const fmtDT = iso => { const d = new Date(iso); return pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()); };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const due = () => MENU.reduce((s, m) => s + cart[m.id] * m.price, 0);
+
+function applyPaper() {
+  let st = $('pageStyle');
+  if (!st) { st = document.createElement('style'); st.id = 'pageStyle'; document.head.appendChild(st); }
+  const w = set.paper === '80' ? 80 : 58;
+  st.textContent = '@page { size: ' + w + 'mm auto; margin: 2mm; }';
+}
+
+function renderItems() {
+  $('items').innerHTML = MENU.map(m => `
+    <div class="item">
+      <div><div class="name">${m.zh}</div><div class="price">${m.en}｜${rm(m.price)}</div></div>
+      <div class="qty">
+        <button class="round" data-id="${m.id}" data-d="-1" aria-label="${m.zh} 減一">−</button>
+        <output id="q-${m.id}">${cart[m.id]}</output>
+        <button class="round plus" data-id="${m.id}" data-d="1" aria-label="${m.zh} 加一">+</button>
+      </div>
+    </div>`).join('');
+}
+
+function renderCart() {
+  MENU.forEach(m => $('q-' + m.id).textContent = cart[m.id]);
+  const d = due();
+  $('due').textContent = rm(d);
+  const notes = [d, 10, 20, 50, 100].filter((v, i, a) => v > 0 && (i === 0 || v > d) && a.indexOf(v) === i).slice(0, 6);
+  $('chips').innerHTML = notes.map((v, i) => `<button data-paid="${v}" aria-pressed="${paid === v}">${i === 0 ? '剛好 ' : ''}${rm(v).replace('.00', '')}</button>`).join('');
+  if (paid !== null && paid < d) paid = null;
+  $('paidShow').textContent = pay === 'Cash' && paid !== null ? rm(paid) : '—';
+  $('changeShow').textContent = pay === 'Cash' && paid !== null ? rm(paid - d) : '—';
+  $('cashBox').style.display = pay === 'Cash' ? 'grid' : 'none';
+  $('payCash').setAttribute('aria-pressed', pay === 'Cash');
+  $('payQR').setAttribute('aria-pressed', pay === 'DuitNow QR');
+  $('checkout').disabled = d === 0 || (pay === 'Cash' && paid === null);
+  $('checkout').textContent = d === 0 ? '先點餐' : (pay === 'Cash' && paid === null ? '選擇收到的金額' : '結帳並列印收據 ' + rm(d));
+}
+
+function renderHeader() {
+  const k = dayKey(new Date());
+  const today = txs.filter(t => t.day === k && !t.void);
+  $('coLine').textContent = set.co;
+  $('todayLabel').textContent = '今日 ' + k.slice(5).replace('-', '/');
+  $('todayTotal').textContent = rm(today.reduce((s, t) => s + t.total, 0));
+  $('todayCount').textContent = today.length + ' 張收據';
+}
+
+function renderRecent() {
+  const k = dayKey(new Date());
+  const list = txs.filter(t => t.day === k).slice().reverse();
+  $('recent').innerHTML = list.length ? list.map(t => `
+    <div class="tx ${t.void ? 'void' : ''}">
+      <span class="no">${t.no}${t.void ? '（已作廢）' : ''}</span><span>${rm(t.total)}</span>
+      <span class="sub">${fmtDT(t.at).slice(11)}｜${t.lines.map(l => l.zh + '×' + l.q).join('、')}</span><span class="sub">${t.pay === 'Cash' ? '現金' : 'QR'}</span>
+      <div class="acts">
+        <button data-reprint="${t.no}">補印</button>
+        ${t.void ? '' : `<button class="danger" data-void="${t.no}">作廢</button>`}
+      </div>
+    </div>`).join('') : '<div class="sub">今天還沒有收據。點餐後按「結帳並列印收據」。</div>';
+}
+
+function renderDay() {
+  const k = $('dayPick').value || dayKey(new Date());
+  const list = txs.filter(t => t.day === k && !t.void);
+  const rows = MENU.map(m => {
+    const q = list.reduce((s, t) => s + (t.lines.find(l => l.id === m.id) || { q: 0 }).q, 0);
+    return `<tr><td>${m.zh}</td><td class="n">${q}</td><td class="n">${rm(q * m.price)}</td></tr>`;
+  }).join('');
+  const total = list.reduce((s, t) => s + t.total, 0);
+  const cash = list.filter(t => t.pay === 'Cash').reduce((s, t) => s + t.total, 0);
+  const voids = txs.filter(t => t.day === k && t.void).length;
+  $('dayTable').innerHTML = `<thead><tr><th>品項</th><th class="n">份數</th><th class="n">金額</th></tr></thead><tbody>${rows}
+    <tr class="sum"><td>合計（${list.length} 張）</td><td class="n"></td><td class="n">${rm(total)}</td></tr>
+    <tr><td>現金</td><td></td><td class="n">${rm(cash)}</td></tr>
+    <tr><td>DuitNow QR</td><td></td><td class="n">${rm(total - cash)}</td></tr>
+    <tr><td>作廢</td><td class="n">${voids} 張</td><td></td></tr></tbody>`;
+}
+
+function renderAll() { renderCart(); renderHeader(); renderRecent(); renderDay(); }
+
+function receiptHTML(t, test) {
+  const head = `<div class="c co">${esc(set.co)}</div>${set.line2 ? `<div class="c">${esc(set.line2)}</div>` : ''}
+    <div class="c ttl">${test ? 'TEST PRINT' : 'RECEIPT'}</div>`;
+  const lines = t.lines.map(l => `<div>${esc(l.en)} ${esc(l.zh)}</div><div class="l"><span>${l.q} x ${rm(l.price)}</span><span>${rm(l.q * l.price)}</span></div>`).join('');
+  const payLines = t.pay === 'Cash'
+    ? `<div class="l"><span>Cash</span><span>${rm(t.paid)}</span></div><div class="l"><span>Change</span><span>${rm(t.paid - t.total)}</span></div>`
+    : `<div class="l"><span>Paid by</span><span>DuitNow QR</span></div>`;
+  return `${head}${t.void ? '<div class="void">VOID 作廢</div>' : ''}
+    <div class="l"><span>No.</span><span>${t.no}</span></div>
+    <div class="l"><span>Date</span><span>${fmtDT(t.at)}</span></div>
+    <div class="l"><span>Cashier</span><span>${esc(set.cashier)}</span></div>
+    <hr>${lines}<hr>
+    <div class="l tot"><span>TOTAL</span><span>${rm(t.total)}</span></div>
+    ${payLines}<hr>
+    <div class="c">Please keep this receipt for<br>Lucky Draw &amp; points collection.</div>
+    <div class="c">Thank you!</div>`;
+}
+
+function doPrint(html) {
+  $('receipt').innerHTML = html;
+  try { window.print(); } catch (e) { $('msg').textContent = '這個瀏覽器不能列印，請用 Chrome 或 Safari 開啟。'; }
+}
+
+function nextNo(now) {
+  const k = dayKey(now);
+  const n = txs.filter(t => t.day === k).length + 1;
+  return set.prefix + '-' + k.slice(2).replace(/-/g, '') + '-' + String(n).padStart(3, '0');
+}
+
+document.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.id) { cart[b.dataset.id] = Math.max(0, cart[b.dataset.id] + Number(b.dataset.d)); renderCart(); return; }
+  if (b.dataset.paid) { paid = Number(b.dataset.paid); renderCart(); return; }
+  if (b.dataset.reprint) { const t = txs.find(x => x.no === b.dataset.reprint); if (t) doPrint(receiptHTML(t)); return; }
+  if (b.dataset.void) {
+    if (b.dataset.armed) { const t = txs.find(x => x.no === b.dataset.void); t.void = true; save(KEY_TX, txs); $('msg').textContent = t.no + ' 已作廢，不算進營業額。'; renderAll(); }
+    else { b.dataset.armed = '1'; b.textContent = '再按一次確認作廢'; setTimeout(() => { if (b.isConnected) { delete b.dataset.armed; b.textContent = '作廢'; } }, 4000); }
+    return;
+  }
+});
+$('payCash').onclick = () => { pay = 'Cash'; renderCart(); };
+$('payQR').onclick = () => { pay = 'DuitNow QR'; paid = null; renderCart(); };
+$('clear').onclick = () => { MENU.forEach(m => cart[m.id] = 0); paid = null; $('msg').textContent = ''; renderCart(); };
+$('checkout').onclick = () => {
+  const now = new Date(), total = due();
+  const t = { no: nextNo(now), at: now.toISOString(), day: dayKey(now), pay, paid: pay === 'Cash' ? paid : total, total,
+    lines: MENU.filter(m => cart[m.id] > 0).map(m => ({ id: m.id, zh: m.zh, en: m.en, price: m.price, q: cart[m.id] })) };
+  txs.push(t);
+  const ok = save(KEY_TX, txs);
+  MENU.forEach(m => cart[m.id] = 0); paid = null;
+  $('msg').textContent = t.no + ' 已記錄。' + (ok ? '' : '注意：這個瀏覽器沒辦法存資料，重新整理會不見。');
+  renderAll();
+  doPrint(receiptHTML(t));
+};
+$('dayPick').onchange = renderDay;
+$('printDay').onclick = () => {
+  const k = $('dayPick').value || dayKey(new Date());
+  doPrint(`<div class="c co">${esc(set.co)}</div><div class="c ttl">DAILY SUMMARY</div><div class="c">${k}</div><hr>` +
+    $('dayTable').outerHTML.replace(/<table[^>]*>/, '<table style="width:100%;font-size:9pt">'));
+};
+$('exportCsv').onclick = () => {
+  const rows = [['收據編號', '日期', '時間', '付款方式', ...MENU.map(m => m.zh + '份數'), '金額(RM)', '收現(RM)', '作廢']];
+  txs.forEach(t => { const d = fmtDT(t.at); rows.push([t.no, t.day, d.slice(11), t.pay, ...MENU.map(m => (t.lines.find(l => l.id === m.id) || { q: 0 }).q), t.total.toFixed(2), t.pay === 'Cash' ? t.paid.toFixed(2) : '', t.void ? '是' : '']); });
+  const csv = '﻿' + rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  a.download = '全店_加盟展銷售明細_' + set.prefix + '_' + dayKey(new Date()) + '.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+};
+function fillSet() { $('setCo').value = set.co; $('setLine2').value = set.line2; $('setCashier').value = set.cashier; $('setPrefix').value = set.prefix; $('setPaper').value = set.paper; }
+$('saveSet').onclick = () => {
+  set = { co: $('setCo').value.trim() || DEFAULTS.co, line2: $('setLine2').value.trim(), cashier: $('setCashier').value.trim(),
+    prefix: ($('setPrefix').value.trim() || 'EXPO').toUpperCase(), paper: $('setPaper').value.trim() === '80' ? '80' : '58' };
+  save(KEY_SET, set); applyPaper(); fillSet(); renderHeader(); $('msg').textContent = '設定已儲存。';
+};
+$('testPrint').onclick = () => doPrint(receiptHTML({ no: set.prefix + '-TEST-000', at: new Date().toISOString(), pay: 'Cash', paid: 20, total: 14,
+  lines: MENU.map(m => ({ id: m.id, zh: m.zh, en: m.en, price: m.price, q: 1 })) }, true));
+
+$('dayPick').value = dayKey(new Date());
+fillSet(); applyPaper(); renderItems(); renderAll();
+</script>
+</body>
+</html>
