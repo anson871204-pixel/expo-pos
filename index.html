@@ -118,15 +118,8 @@ details[open] { display: grid; gap: 10px; }
   </section>
 
   <section aria-labelledby="h-pay">
-    <h2 id="h-pay">付款</h2>
-    <div class="seg" role="group" aria-label="付款方式">
-      <button id="payCash" aria-pressed="true">現金</button>
-      <button id="payQR" aria-pressed="false">DuitNow QR</button>
-    </div>
-    <div id="cashBox" style="display:grid;gap:10px">
-      <div class="chips" id="chips"></div>
-      <div class="change"><span>收 <b id="paidShow">—</b></span><span>找零 <b id="changeShow">—</b></span></div>
-    </div>
+    <h2 id="h-pay">付款（只收 DuitNow QR）</h2>
+    <div class="sub">請顧客掃 QR 付款，確認收到款項再按結帳。</div>
     <button class="big" id="checkout" disabled>結帳並列印收據</button>
     <div class="row">
       <button id="clear">清空</button>
@@ -180,7 +173,7 @@ function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return t
 let txs = load(KEY_TX, []);
 let set = Object.assign({}, DEFAULTS, load(KEY_SET, {}));
 let cart = {}; MENU.forEach(m => cart[m.id] = 0);
-let pay = 'Cash', paid = null;
+const pay = 'DuitNow QR';
 
 const $ = id => document.getElementById(id);
 const rm = n => 'RM' + n.toFixed(2);
@@ -213,16 +206,8 @@ function renderCart() {
   MENU.forEach(m => $('q-' + m.id).textContent = cart[m.id]);
   const d = due();
   $('due').textContent = rm(d);
-  const notes = [d, 10, 20, 50, 100].filter((v, i, a) => v > 0 && (i === 0 || v > d) && a.indexOf(v) === i).slice(0, 6);
-  $('chips').innerHTML = notes.map((v, i) => `<button data-paid="${v}" aria-pressed="${paid === v}">${i === 0 ? '剛好 ' : ''}${rm(v).replace('.00', '')}</button>`).join('');
-  if (paid !== null && paid < d) paid = null;
-  $('paidShow').textContent = pay === 'Cash' && paid !== null ? rm(paid) : '—';
-  $('changeShow').textContent = pay === 'Cash' && paid !== null ? rm(paid - d) : '—';
-  $('cashBox').style.display = pay === 'Cash' ? 'grid' : 'none';
-  $('payCash').setAttribute('aria-pressed', pay === 'Cash');
-  $('payQR').setAttribute('aria-pressed', pay === 'DuitNow QR');
-  $('checkout').disabled = d === 0 || (pay === 'Cash' && paid === null);
-  $('checkout').textContent = d === 0 ? '先點餐' : (pay === 'Cash' && paid === null ? '選擇收到的金額' : '結帳並列印收據 ' + rm(d));
+  $('checkout').disabled = d === 0;
+  $('checkout').textContent = d === 0 ? '先點餐' : '已收 QR，結帳並列印 ' + rm(d);
 }
 
 function renderHeader() {
@@ -240,7 +225,7 @@ function renderRecent() {
   $('recent').innerHTML = list.length ? list.map(t => `
     <div class="tx ${t.void ? 'void' : ''}">
       <span class="no">${t.no}${t.void ? '（已作廢）' : ''}</span><span>${rm(t.total)}</span>
-      <span class="sub">${fmtDT(t.at).slice(11)}｜${t.lines.map(l => l.zh + '×' + l.q).join('、')}</span><span class="sub">${t.pay === 'Cash' ? '現金' : 'QR'}</span>
+      <span class="sub">${fmtDT(t.at).slice(11)}｜${t.lines.map(l => l.zh + '×' + l.q).join('、')}</span><span class="sub">QR</span>
       <div class="acts">
         <button data-reprint="${t.no}">補印</button>
         ${t.void ? '' : `<button class="danger" data-void="${t.no}">作廢</button>`}
@@ -256,12 +241,9 @@ function renderDay() {
     return `<tr><td>${m.zh}</td><td class="n">${q}</td><td class="n">${rm(q * m.price)}</td></tr>`;
   }).join('');
   const total = list.reduce((s, t) => s + t.total, 0);
-  const cash = list.filter(t => t.pay === 'Cash').reduce((s, t) => s + t.total, 0);
   const voids = txs.filter(t => t.day === k && t.void).length;
   $('dayTable').innerHTML = `<thead><tr><th>品項</th><th class="n">份數</th><th class="n">金額</th></tr></thead><tbody>${rows}
     <tr class="sum"><td>合計（${list.length} 張）</td><td class="n"></td><td class="n">${rm(total)}</td></tr>
-    <tr><td>現金</td><td></td><td class="n">${rm(cash)}</td></tr>
-    <tr><td>DuitNow QR</td><td></td><td class="n">${rm(total - cash)}</td></tr>
     <tr><td>作廢</td><td class="n">${voids} 張</td><td></td></tr></tbody>`;
 }
 
@@ -271,9 +253,7 @@ function receiptHTML(t, test) {
   const head = `<div class="c co">${esc(set.co)}</div>${set.line2 ? `<div class="c">${esc(set.line2)}</div>` : ''}
     <div class="c ttl">${test ? 'TEST PRINT' : 'RECEIPT'}</div>`;
   const lines = t.lines.map(l => `<div>${esc(l.en)} ${esc(l.zh)}</div><div class="l"><span>${l.q} x ${rm(l.price)}</span><span>${rm(l.q * l.price)}</span></div>`).join('');
-  const payLines = t.pay === 'Cash'
-    ? `<div class="l"><span>Cash</span><span>${rm(t.paid)}</span></div><div class="l"><span>Change</span><span>${rm(t.paid - t.total)}</span></div>`
-    : `<div class="l"><span>Paid by</span><span>DuitNow QR</span></div>`;
+  const payLines = `<div class="l"><span>Paid by</span><span>DuitNow QR</span></div>`;
   return `${head}${t.void ? '<div class="void">VOID 作廢</div>' : ''}
     <div class="l"><span>No.</span><span>${t.no}</span></div>
     <div class="l"><span>Date</span><span>${fmtDT(t.at)}</span></div>
@@ -299,7 +279,6 @@ function nextNo(now) {
 document.addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   if (b.dataset.id) { cart[b.dataset.id] = Math.max(0, cart[b.dataset.id] + Number(b.dataset.d)); renderCart(); return; }
-  if (b.dataset.paid) { paid = Number(b.dataset.paid); renderCart(); return; }
   if (b.dataset.reprint) { const t = txs.find(x => x.no === b.dataset.reprint); if (t) doPrint(receiptHTML(t)); return; }
   if (b.dataset.void) {
     if (b.dataset.armed) { const t = txs.find(x => x.no === b.dataset.void); t.void = true; save(KEY_TX, txs); $('msg').textContent = t.no + ' 已作廢，不算進營業額。'; renderAll(); }
@@ -307,16 +286,14 @@ document.addEventListener('click', e => {
     return;
   }
 });
-$('payCash').onclick = () => { pay = 'Cash'; renderCart(); };
-$('payQR').onclick = () => { pay = 'DuitNow QR'; paid = null; renderCart(); };
-$('clear').onclick = () => { MENU.forEach(m => cart[m.id] = 0); paid = null; $('msg').textContent = ''; renderCart(); };
+$('clear').onclick = () => { MENU.forEach(m => cart[m.id] = 0); $('msg').textContent = ''; renderCart(); };
 $('checkout').onclick = () => {
   const now = new Date(), total = due();
-  const t = { no: nextNo(now), at: now.toISOString(), day: dayKey(now), pay, paid: pay === 'Cash' ? paid : total, total,
+  const t = { no: nextNo(now), at: now.toISOString(), day: dayKey(now), pay, total,
     lines: MENU.filter(m => cart[m.id] > 0).map(m => ({ id: m.id, zh: m.zh, en: m.en, price: m.price, q: cart[m.id] })) };
   txs.push(t);
   const ok = save(KEY_TX, txs);
-  MENU.forEach(m => cart[m.id] = 0); paid = null;
+  MENU.forEach(m => cart[m.id] = 0);
   $('msg').textContent = t.no + ' 已記錄。' + (ok ? '' : '注意：這個瀏覽器沒辦法存資料，重新整理會不見。');
   renderAll();
   doPrint(receiptHTML(t));
@@ -328,8 +305,8 @@ $('printDay').onclick = () => {
     $('dayTable').outerHTML.replace(/<table[^>]*>/, '<table style="width:100%;font-size:9pt">'));
 };
 $('exportCsv').onclick = () => {
-  const rows = [['收據編號', '日期', '時間', '付款方式', ...MENU.map(m => m.zh + '份數'), '金額(RM)', '收現(RM)', '作廢']];
-  txs.forEach(t => { const d = fmtDT(t.at); rows.push([t.no, t.day, d.slice(11), t.pay, ...MENU.map(m => (t.lines.find(l => l.id === m.id) || { q: 0 }).q), t.total.toFixed(2), t.pay === 'Cash' ? t.paid.toFixed(2) : '', t.void ? '是' : '']); });
+  const rows = [['收據編號', '日期', '時間', '付款方式', ...MENU.map(m => m.zh + '份數'), '金額(RM)', '作廢']];
+  txs.forEach(t => { const d = fmtDT(t.at); rows.push([t.no, t.day, d.slice(11), t.pay, ...MENU.map(m => (t.lines.find(l => l.id === m.id) || { q: 0 }).q), t.total.toFixed(2), t.void ? '是' : '']); });
   const csv = '﻿' + rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
@@ -342,7 +319,7 @@ $('saveSet').onclick = () => {
     prefix: ($('setPrefix').value.trim() || 'EXPO').toUpperCase(), paper: $('setPaper').value.trim() === '80' ? '80' : '58' };
   save(KEY_SET, set); applyPaper(); fillSet(); renderHeader(); $('msg').textContent = '設定已儲存。';
 };
-$('testPrint').onclick = () => doPrint(receiptHTML({ no: set.prefix + '-TEST-000', at: new Date().toISOString(), pay: 'Cash', paid: 20, total: 14,
+$('testPrint').onclick = () => doPrint(receiptHTML({ no: set.prefix + '-TEST-000', at: new Date().toISOString(), pay: 'DuitNow QR', total: 14,
   lines: MENU.map(m => ({ id: m.id, zh: m.zh, en: m.en, price: m.price, q: 1 })) }, true));
 
 $('dayPick').value = dayKey(new Date());
